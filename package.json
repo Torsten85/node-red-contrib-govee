@@ -1,0 +1,50 @@
+{
+  "name": "node-red-contrib-govee",
+  "version": "1.0.0",
+  "description": "Node-RED nodes for Govee smart light control over LAN",
+  "author": "Torsten",
+  "license": "MIT",
+  "keywords": [
+    "node-red",
+    "node-red-contrib",
+    "govee",
+    "smart-light",
+    "iot",
+    "lan"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Torsten85/node-red-contrib-govee.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Torsten85/node-red-contrib-govee/issues"
+  },
+  "homepage": "https://github.com/Torsten85/node-red-contrib-govee#readme",
+  "node-red": {
+    "nodes": {
+      "govee-light": "src/nodes/govee-light.js"
+    }
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "node-red": ">=4.0.0"
+  },
+  "files": [
+    "src/",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "node-red": "node-red -u ./dev/user -s ./dev/settings.js"
+  },
+  "dependencies": {
+    "color-convert": "^2.0.1",
+    "zod": "^3.21.4"
+  },
+  "devDependencies": {
+    "node-red": "^4.0.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

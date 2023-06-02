@@ -1,0 +1,15 @@
+{
+  "govee-light": {
+    "config": {
+      "deviceid": "Device ID",
+      "searching": "Searching lights…",
+      "not-found": "No lights found"
+    },
+    "node": {
+      "title": "Govee Light",
+      "input": "turn on / off",
+      "output": "status",
+      "not-configured": "not configured"
+    }
+  }
+}

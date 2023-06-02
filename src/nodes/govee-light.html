@@ -1,0 +1,104 @@
+<script type="text/html" data-template-name="govee-light">
+  <div class="form-row">
+    <label for="node-input-name"><i class="fa fa-tag"></i> Name</label>
+    <input type="text" id="node-input-name" placeholder="Optional name">
+  </div>
+  <div class="form-row">
+    <label for="node-input-deviceid"><i class="fa fa-lightbulb-o"></i> <span data-i18n="govee-light.config.deviceid"></span></label>
+    <div style="display: inline-flex; width: calc(100% - 105px)">
+        <div id="input-select-toggle" style="flex-grow: 1;">
+            <input type="text" id="node-input-deviceid" placeholder="00000000-0000-0000-0000-000000000000" style="width: 100%"/>
+        </div>
+        <button id="node-config-input-scan-devices" type="button" class="red-ui-button" style="margin-left: 10px;">
+            <i class="fa fa-search"></i>
+        </button>
+    </div>
+</div>
+</script>
+
+<script type="text/html" data-help-name="govee-light">
+  <p>Controls Govee smart lights over the local network (LAN).</p>
+
+  <h3>Input</h3>
+  <p>Send a <code>msg.payload</code> to control the light:</p>
+  <dl class="message-properties">
+    <dt>payload <span class="property-type">boolean</span></dt>
+    <dd><code>true</code> to turn on, <code>false</code> to turn off.</dd>
+    <dt>payload.power <span class="property-type">boolean</span></dt>
+    <dd>Turn the light on or off.</dd>
+    <dt>payload.brightness <span class="property-type">number</span></dt>
+    <dd>Set brightness (0–100).</dd>
+    <dt>payload.kelvin <span class="property-type">number</span></dt>
+    <dd>Set color temperature in Kelvin (2000–9000).</dd>
+    <dt>payload.rgb <span class="property-type">array | string</span></dt>
+    <dd>Set color as <code>[r, g, b]</code> array or <code>"#rrggbb"</code> hex string.</dd>
+    <dt>payload.hsl <span class="property-type">array</span></dt>
+    <dd>Set color as <code>[h, s, l]</code> array.</dd>
+  </dl>
+
+  <h3>Output</h3>
+  <p>Emits a <code>msg.payload</code> whenever the device status changes:</p>
+  <dl class="message-properties">
+    <dt>payload.power <span class="property-type">boolean</span></dt>
+    <dd>Current power state.</dd>
+    <dt>payload.brightness <span class="property-type">number</span></dt>
+    <dd>Current brightness (0–100).</dd>
+    <dt>payload.color <span class="property-type">array</span></dt>
+    <dd>Current color as <code>[r, g, b]</code>.</dd>
+    <dt>payload.kelvin <span class="property-type">number</span></dt>
+    <dd>Current color temperature in Kelvin.</dd>
+  </dl>
+</script>
+
+<script type="text/javascript">
+  RED.nodes.registerType('govee-light', {
+    category: 'Govee',
+    color: 'white',
+    icon: 'govee.png',
+    defaults: {
+      name: { value: '' },
+      deviceid: {
+        value: '',
+        required: true,
+        validate: RED.validators.regex(/^([0-9A-F]{2}[:]){7}([0-9A-F]{2})$/)
+      }
+    },
+    align: 'left',
+    inputs: 1,
+    outputs: 1,
+    label() {
+      return this.name || this._('govee-light.node.title')
+    },
+    paletteLabel() {
+      return this._('govee-light.node.title')
+    },
+    inputLabels() {
+      return this._('govee-light.node.input')
+    },
+    outputLabels() {
+      return this._('govee-light.node.output')
+    },
+    oneditprepare() {
+      $('#node-config-input-scan-devices').click(() => {
+        const notification = RED.notify(this._('govee-light.config.searching'), { type: 'compact', modal: true, fixed: true })
+        const currentId = $('#node-input-deviceid').val()
+        $.get('/govee/lights')
+        .done(data => {
+          const devices = typeof data === 'string' ? JSON.parse(data) : data
+          $('#node-input-deviceid').typedInput({
+            types: [
+              {
+                value: currentId,
+                options: devices.map(device => ({
+                  value: device.id,
+                  label: `${device.sku} (${device.ip})`
+                }))
+              },
+            ]
+          })
+          notification.close()
+        })
+      })
+    }
+  })
+</script>

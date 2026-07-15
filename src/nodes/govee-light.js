@@ -30,38 +30,110 @@ module.exports = function GoveeLightRegistration(RED) {
       return
     }
 
-    const getDevice = () => getClient().then(client => client.getDevice(config.deviceid))
+    // Acquire a single shared client reference for the lifetime of this node.
+    // It is released exactly once in the 'close' handler (see below), which
+    // keeps the goveeClientManager reference count balanced.
+    const clientPromise = getClient()
+
+    let currentDevice
+
+    const setStatus = device => {
+      if (device) {
+        node.status({ fill: 'green', shape: 'dot', text: 'govee-light.node.connected' })
+      } else {
+        node.status({ fill: 'yellow', shape: 'ring', text: 'govee-light.node.searching' })
+      }
+    }
 
     const onUpdated = () => {
-      getDevice().then(device => {
-        if (!device) return
-        node.send({
-          payload: {
-            power: device.power,
-            brightness: device.brightness,
-            color: device.color,
-            kelvin: device.kelvin,
-          },
-        })
+      if (!currentDevice) return
+      node.send({
+        payload: {
+          power: currentDevice.power,
+          brightness: currentDevice.brightness,
+          color: currentDevice.color,
+          kelvin: currentDevice.kelvin,
+        },
       })
     }
 
-    getDevice().then(device => {
-      if (!device) {
-        node.status({ fill: 'red', shape: 'ring', text: 'govee-light.node.not-configured' })
-        return
-      }
+    const attachDevice = device => {
+      if (currentDevice === device) return
+      detachDevice()
+      currentDevice = device
       device.on('updated', onUpdated)
+      setStatus(device)
+    }
+
+    const detachDevice = () => {
+      if (currentDevice) {
+        currentDevice.removeListener('updated', onUpdated)
+        currentDevice = undefined
+      }
+    }
+
+    const onDeviceDiscovered = device => {
+      if (device.id === config.deviceid) {
+        attachDevice(device)
+      }
+    }
+
+    const onDeviceRemoved = device => {
+      if (device.id === config.deviceid) {
+        detachDevice()
+        setStatus(undefined)
+      }
+    }
+
+    // Device discovery over UDP is asynchronous, so the device is rarely known
+    // at construction time. Show "searching" and let the client events drive
+    // the status once the configured device appears or disappears.
+    setStatus(undefined)
+
+    const clientReady = clientPromise.then(client => {
+      client.on('deviceDiscovered', onDeviceDiscovered)
+      client.on('deviceRemoved', onDeviceRemoved)
+
+      // The device may already be known from an earlier scan.
+      const existing = client.getDevice(config.deviceid)
+      if (existing) {
+        attachDevice(existing)
+      }
+      return client
     })
+
+    // Resolve as soon as the configured device is available, nudging discovery
+    // so we don't have to wait for the next periodic scan. Resolves to the
+    // device, or undefined if it never shows up within the timeout.
+    const waitForDevice = async (timeout = 8000) => {
+      const client = await clientReady
+      const existing = client.getDevice(config.deviceid)
+      if (existing) return existing
+
+      client.updateDeviceList()
+
+      return new Promise(resolve => {
+        const onDiscovered = device => {
+          if (device.id !== config.deviceid) return
+          clearTimeout(timer)
+          client.removeListener('deviceDiscovered', onDiscovered)
+          resolve(device)
+        }
+
+        const timer = setTimeout(() => {
+          client.removeListener('deviceDiscovered', onDiscovered)
+          resolve(client.getDevice(config.deviceid))
+        }, timeout)
+
+        client.on('deviceDiscovered', onDiscovered)
+      })
+    }
 
     node.on('input', async (msg, send, done) => {
       try {
-        if (!config.deviceid) {
-          throw new Error('Missing device id')
-        }
         const parsedMessage = inputSchema.parse(msg.payload)
 
-        const device = await getDevice()
+        const device = await waitForDevice()
         if (!device) {
           throw new Error(`No device found with id ${config.deviceid}`)
         }
@@ -100,9 +172,11 @@ module.exports = function GoveeLightRegistration(RED) {
     })
 
     node.on('close', async (done) => {
-      const device = await getDevice().catch(() => null)
-      if (device) {
-        device.removeListener('updated', onUpdated)
+      detachDevice()
+      const client = await clientPromise.catch(() => null)
+      if (client) {
+        client.removeListener('deviceDiscovered', onDeviceDiscovered)
+        client.removeListener('deviceRemoved', onDeviceRemoved)
       }
       await releaseClient()
       done()

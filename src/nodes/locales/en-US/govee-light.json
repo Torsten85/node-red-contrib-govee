@@ -9,7 +9,9 @@
       "title": "Govee Light",
       "input": "turn on / off",
       "output": "status",
-      "not-configured": "not configured"
+      "not-configured": "not configured",
+      "searching": "searching…",
+      "connected": "connected"
     }
   }
 }

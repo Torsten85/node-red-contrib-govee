@@ -1,19 +1,17 @@
 const { createSocket } = require('node:dgram')
 const { EventEmitter } = require('node:events')
-const z = require('zod')
 
 const GoveeDevice = require('./GoveeDevice')
 const { responseSchema } = require('./protocol')
 
 const GOVEE_ADDRESS = '239.255.255.250'
-const GOVEE_INCOMING_PORT = 4002
-const GOVEE_OUTGOING_PORT = 4001
+const GOVEE_INCOMING_PORT = 4002 // port we bind to for device replies (scan + devStatus)
+const GOVEE_SCAN_PORT = 4001 // multicast scan/discovery requests go here
+const GOVEE_CONTROL_PORT = 4003 // unicast device commands (turn/brightness/colorwc/devStatus) go here
 const UNRESPONSIVE_THRESHOLD = 10_000 // 10s
 
 const SCAN_INTERVAL = 10_000 // 10s
 const STATUS_INTERVAL = 1_000 // 1s
-
-const ipSchema = z.string().ip()
 
 class GoveeSocket extends EventEmitter {
   constructor(networkAddress) {
@@ -48,7 +46,7 @@ class GoveeSocket extends EventEmitter {
         socket.setMulticastTTL(128)
         socket.addMembership(GOVEE_ADDRESS)
         const message = JSON.stringify({ msg: { cmd: 'scan', data: { account_topic: 'reserve' } } })
-        socket.send(message, 0, message.length, GOVEE_OUTGOING_PORT, GOVEE_ADDRESS)
+        socket.send(message, 0, message.length, GOVEE_SCAN_PORT, GOVEE_ADDRESS)
       })
 
       socket.bind(GOVEE_INCOMING_PORT, this._networkAddress.address)
@@ -58,9 +56,12 @@ class GoveeSocket extends EventEmitter {
   async send(command, data = {}, target = GOVEE_ADDRESS) {
     const message = JSON.stringify({ msg: { cmd: command, data } })
 
+    // Discovery is multicast on 4001; everything else is unicast to the device on 4003.
+    const port = target === GOVEE_ADDRESS ? GOVEE_SCAN_PORT : GOVEE_CONTROL_PORT
+
     const socket = await this._getSocket()
     return new Promise((resolve, reject) => {
-      socket.send(message, 0, message.length, GOVEE_OUTGOING_PORT, target, error => {
+      socket.send(message, 0, message.length, port, target, error => {
         if (error) {
           reject(error)
         } else {
@@ -182,10 +183,15 @@ class GoveeSocket extends EventEmitter {
   }
 
   getDevice(idOrIp) {
-    if (ipSchema.safeParse(idOrIp).success) {
-      return this.getDevices().find(device => device.ip === idOrIp)
+    // Look up by device id first (the map key). Govee ids are 8 colon-separated
+    // hex groups, which are a valid IPv6 literal, so sniffing the format and
+    // branching on "is this an IP?" misroutes an id into the ip search and
+    // never finds it. Only fall back to an ip search when the id lookup misses.
+    const byId = this._devices.get(idOrIp)?.device
+    if (byId) {
+      return byId
     }
-    return this._devices.get(idOrIp)?.device
+    return this.getDevices().find(device => device.ip === idOrIp)
   }
 }
 

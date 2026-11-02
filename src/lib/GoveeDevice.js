@@ -141,8 +141,12 @@ class GoveeDevice extends EventEmitter {
     return this._send('colorwc', { color: rgb })
   }
 
-  setHSL(value) {
-    return this.setRGB(hsl.rgb(value))
+  setHSL([h, s, l]) {
+    // The node accepts HSL as [hue 0-360, saturation 0-255, lightness 0-255],
+    // but color-convert's hsl.rgb expects saturation and lightness as 0-100
+    // percentages. Without scaling, any lightness > 100 collapses to white.
+    const toPercent = v => Math.round((v / 255) * 100)
+    return this.setRGB(hsl.rgb([h, toPercent(s), toPercent(l)]))
   }
 }
 

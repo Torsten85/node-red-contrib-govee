@@ -3,14 +3,17 @@ const { getClient, releaseClient } = require('../lib/goveeClientManager')
 
 const booleanInputSchema = z.boolean()
 
+const rgbInputSchema = z.union([
+  z.string().regex(/^#[a-fA-F0-9]{6}$/),
+  z.tuple([z.number().int().min(0).max(255), z.number().int().min(0).max(255), z.number().int().min(0).max(255)]),
+])
+
 const objectInputSchema = z.object({
   power: z.boolean().optional(),
-  rgb: z
-    .union([
-      z.string().regex(/^#[a-fA-F0-9]{6}$/),
-      z.tuple([z.number().int().min(0).max(255), z.number().int().min(0).max(255), z.number().int().min(0).max(255)]),
-    ])
-    .optional(),
+  rgb: rgbInputSchema.optional(),
+  // Alias for `rgb`. The status output emits the current colour as `color`,
+  // so accepting `color` here lets that output be fed straight back in.
+  color: rgbInputSchema.optional(),
   hsl: z.tuple([z.number().int().min(0).max(360), z.number().int().min(0).max(255), z.number().int().min(0).max(255)]).optional(),
   kelvin: z.number().int().min(2000).max(9000).optional(),
   brightness: z.number().int().min(0).max(100).optional(),
@@ -153,10 +156,12 @@ module.exports = function GoveeLightRegistration(RED) {
           device.setBrightness(parsedMessage.brightness)
         }
 
+        const rgbInput = parsedMessage.rgb ?? parsedMessage.color
+
         if (typeof parsedMessage.kelvin !== 'undefined') {
           device.setKelvin(parsedMessage.kelvin)
-        } else if (typeof parsedMessage.rgb !== 'undefined') {
-          device.setRGB(parsedMessage.rgb)
+        } else if (typeof rgbInput !== 'undefined') {
+          device.setRGB(rgbInput)
         } else if (Array.isArray(parsedMessage.hsl)) {
           device.setHSL(parsedMessage.hsl)
         }
